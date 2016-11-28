@@ -1,6 +1,7 @@
 ﻿Imports System.Data.SQLite
 Public Class Form1
     Dim codeList As New ArrayList()
+    Public dbPath As String = Application.StartupPath & "\cards.cdb"
     Private Sub btnAdd_Click(sender As Object, e As EventArgs) Handles btnAdd.Click
         Dim info() As String
         Dim id As String
@@ -9,7 +10,8 @@ Public Class Form1
         Dim ownerCode As String
         Dim originalOwnerCode As String
         Dim zone As Integer = nUDZone.Value
-        ReDim info(5)
+        Dim specialCount As Integer = 1
+        ReDim info(6)
         id = getCardID(lstCards.SelectedItem)
         If currentPlayer.Checked Then
             ownerCode = "0"
@@ -58,6 +60,11 @@ Public Class Form1
         info(3) = Location
         info(4) = zone
         info(5) = posCode
+        If chkSpecialSummon.Checked Then
+            info(6) = specialCount.ToString
+        Else
+            info(6) = ""
+        End If
         Dim card As New Code(info)
         codeList.Add(card)
         lstEnglish.Items.Clear()
@@ -80,7 +87,7 @@ Public Class Form1
     End Sub
 
     Public Sub DisplayCardName(name As String)
-        Dim connectionString As String = "Data Source=cards.cdb"
+        Dim connectionString As String = "Data Source=" + dbPath
         Dim dt As DataTable = Nothing
         Dim ds As New DataSet
         Dim cRow As DataRow = Nothing
@@ -108,7 +115,7 @@ Public Class Form1
         End Try
     End Sub
     Public Function getCardID(name As String) As String
-        Dim connectionString As String = "Data Source=cards.cdb"
+        Dim connectionString As String = "Data Source=" + dbPath
         Dim dt2 As DataTable = Nothing
         Dim ds As New DataSet
         Dim cRow As DataRow = Nothing
@@ -134,6 +141,34 @@ Public Class Form1
 
         End Try
         Return id
+    End Function
+    Public Function getCardName(id As String) As String
+        Dim connectionString As String = "Data Source=" + dbPath
+        Dim dt2 As DataTable = Nothing
+        Dim ds As New DataSet
+        Dim cRow As DataRow = Nothing
+        Dim mSQL2 = "SELECT * from texts WHERE id = '" & id & "';"
+
+        Dim name As String = ""
+        Try
+            Using con As New SQLiteConnection(connectionString)
+                Using cmd As New SQLiteCommand(mSQL2, con)
+                    con.Open()
+                    Using da As New SQLiteDataAdapter(cmd)
+                        da.Fill(ds)
+                        dt2 = ds.Tables(0)
+
+                    End Using
+                End Using
+            End Using
+            If dt2 IsNot Nothing AndAlso dt2.Rows.Count > 0 Then
+                name = getValue(dt2.Rows(0)("name"))
+            End If
+
+        Catch ex As Exception
+
+        End Try
+        Return name
     End Function
     Public Function getValue(ByVal dbValue As Object) As Object
         If IsDBNull(dbValue) Then
@@ -193,6 +228,7 @@ Public Class Form1
     End Sub
 
     Private Sub btnLoad_Click(sender As Object, e As EventArgs) Handles btnLoad.Click
+        OpenFileDialog1.InitialDirectory = Application.StartupPath.ToString
         OpenFileDialog1.ShowDialog()
         If Not OpenFileDialog1.FileName.ToString.Equals("OpenFileDialog1") Then
             ReadPuzzle(OpenFileDialog1.FileName.ToString())
@@ -201,15 +237,24 @@ Public Class Form1
 
     End Sub
     Private Sub ReadPuzzle(path As String)
+        Dim specialCount As Integer = 1
         codeList.Clear()
         Dim fileReader As System.IO.StreamReader
         fileReader = My.Computer.FileSystem.OpenTextFileReader(path)
         Dim stringReader As String
         stringReader = fileReader.ReadLine()
-        While stringReader IsNot ""
+        While stringReader IsNot Nothing
             If stringReader.Contains("AddCard") Then
-                stringReader = stringReader.Substring(stringReader.IndexOf("(") + 1)
-                stringReader = stringReader.Remove(stringReader.Length - 1, 1)
+                If stringReader.Contains("local c") Then
+                    stringReader = stringReader.Substring(stringReader.IndexOf("(") + 1)
+                    stringReader = stringReader.Remove(stringReader.Length - 1, 1)
+                    stringReader += "," + specialCount.ToString
+                    specialCount += 1
+                Else
+                    stringReader = stringReader.Substring(stringReader.IndexOf("(") + 1)
+                    stringReader = stringReader.Remove(stringReader.Length - 1, 1)
+                    stringReader += ","
+                End If
                 codeList.Add(New Code(stringReader.Split(",")))
             End If
             stringReader = fileReader.ReadLine()
@@ -217,7 +262,7 @@ Public Class Form1
 
         For i = 0 To codeList.Count - 1
             If Not codeList(i).Equals("") Then
-                lstEnglish.Items.Add((i + 1).ToString & " - " & codeList(i).toEnglish().ToString & vbCrLf)
+                lstEnglish.Items.Add((i + 1).ToString & " - " & codeList(i).ToEnglish().ToString & vbCrLf)
             End If
         Next
         nUDCardSelector.Maximum = codeList.Count
@@ -236,5 +281,79 @@ Public Class Form1
         If codeList.Count = 0 Then
             btnRemove.Enabled = False
         End If
+    End Sub
+
+    Private Sub btnView_Click(sender As Object, e As EventArgs) Handles btnView.Click
+        For Each line As Code In codeList
+            Code_Preview.txtCodePreview.AppendText(line.toString & vbCrLf)
+        Next
+        Code_Preview.Show()
+    End Sub
+
+    Private Sub btnPublish_Click(sender As Object, e As EventArgs) Handles btnPublish.Click
+        Dim path As String
+        Dim dialog As New FolderBrowserDialog()
+        dialog.SelectedPath = Application.StartupPath
+        dialog.Description = "Select save location"
+        If dialog.ShowDialog(Me) = DialogResult.Cancel Then
+            Exit Sub
+        End If
+        path = dialog.SelectedPath.ToString & "\puzzle.txt"
+        Dim pLP As String
+        Dim oLP As String
+        If My.Computer.FileSystem.FileExists(Environment.GetFolderPath(Environment.SpecialFolder.Desktop) & "\puzzle.lua") Then
+            If MsgBox("File already exists, overwrite?", MsgBoxStyle.YesNo) = MsgBoxResult.Yes Then
+                My.Computer.FileSystem.DeleteFile(Environment.GetFolderPath(Environment.SpecialFolder.Desktop) & "\puzzle.lua")
+                pLP = InputBox("Player Life Points?", "Life Points", 8000)
+                If pLP = "" Then
+                    Exit Sub
+                End If
+                oLP = InputBox("Opponent Life Points?", "Life Points", 8000)
+                If oLP = "" Then
+                    Exit Sub
+                End If
+                My.Computer.FileSystem.WriteAllText(path, "Debug.SetAIName(""Ｚ-ＯＮＥ"")" & vbCrLf, True)
+                    My.Computer.FileSystem.WriteAllText(path, "Debug.ReloadFieldBegin(DUEL_ATTACK_FIRST_TURN+DUEL_SIMPLE_AI)" & vbCrLf, True)
+                    My.Computer.FileSystem.WriteAllText(path, "Debug.SetPlayerInfo(0," & pLP & ",0,0)" & vbCrLf, True)
+                    My.Computer.FileSystem.WriteAllText(path, "Debug.SetPlayerInfo(0," & oLP & ",0,0)" & vbCrLf, True)
+                    For Each line In codeList
+                        My.Computer.FileSystem.WriteAllText(path, line.ToString & vbCrLf, True)
+                    Next
+                    My.Computer.FileSystem.WriteAllText(path, "Debug.ReloadFieldEnd()" & vbCrLf, True)
+                    My.Computer.FileSystem.WriteAllText(path, "aux.BeginPuzzle()" & vbCrLf, True)
+                    My.Computer.FileSystem.RenameFile(path, "puzzle.lua")
+                End If
+            Else
+            pLP = InputBox("Player Life Points?", "Life Points", 8000)
+            If pLP = "" Then
+                Exit Sub
+            End If
+            oLP = InputBox("Opponent Life Points?", "Life Points", 8000)
+            If oLP = "" Then
+                Exit Sub
+            End If
+            My.Computer.FileSystem.WriteAllText(path, "Debug.SetAIName(""Ｚ-ＯＮＥ"")" & vbCrLf, True)
+            My.Computer.FileSystem.WriteAllText(path, "Debug.ReloadFieldBegin(DUEL_ATTACK_FIRST_TURN+DUEL_SIMPLE_AI)" & vbCrLf, True)
+            My.Computer.FileSystem.WriteAllText(path, "Debug.SetPlayerInfo(0," & pLP & ",0,0)" & vbCrLf, True)
+            My.Computer.FileSystem.WriteAllText(path, "Debug.SetPlayerInfo(0," & oLP & ",0,0)" & vbCrLf, True)
+            For Each line In codeList
+                My.Computer.FileSystem.WriteAllText(path, line.ToString & vbCrLf, True)
+            Next
+            My.Computer.FileSystem.WriteAllText(path, "Debug.ReloadFieldEnd()" & vbCrLf, True)
+            My.Computer.FileSystem.WriteAllText(path, "aux.BeginPuzzle()" & vbCrLf, True)
+            My.Computer.FileSystem.RenameFile(path, "puzzle.lua")
+        End If
+    End Sub
+
+    Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        If Not My.Computer.FileSystem.FileExists(dbPath) Then
+            OpenFileDialog1.ShowDialog()
+            If OpenFileDialog1.FileName.ToString.Contains(".cdb") Then
+                dbPath = OpenFileDialog1.FileName.ToString()
+            Else
+                Me.Close()
+            End If
+        End If
+
     End Sub
 End Class

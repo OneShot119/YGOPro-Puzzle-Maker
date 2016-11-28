@@ -7,6 +7,8 @@ Public Class Code
     Private location As String
     Private zone As String
     Private pos As String
+    Private special As Boolean
+    Private specialNumber As Integer
     Public Sub New(ByVal info As String())
         id = info(0)
         ownerCode = info(1)
@@ -14,11 +16,21 @@ Public Class Code
         location = info(3)
         zone = info(4)
         pos = info(5)
+        If (info(6).Equals("")) Then
+            special = False
+        Else
+            special = True
+            specialNumber = Integer.Parse(info(6))
+        End If
     End Sub
     Function toEnglish() As English
         Dim english As String()
-        ReDim english(5)
-        english(0) = getCardName(id)
+        Dim name As String = Form1.getCardName(id)
+        ReDim english(6)
+        If name = "" Then
+            name = "ERROR: Card not found."
+        End If
+        english(0) = name
         If ownerCode = 0 Then
             english(1) = " to Player"
         Else
@@ -60,37 +72,23 @@ Public Class Code
             Case Else
                 english(5) = "null"
         End Select
+        If special Then
+            english(6) = True
+        Else
+            english(6) = False
+        End If
         Return New English(english)
     End Function
     Public Overrides Function toString() As String
-        Return "Debug.AddCard(" + id + "," + ownerCode + "," + originalOwnerCode + "," + location + "," + zone + "," + pos + ")"
-    End Function
-    Public Function getCardName(id As String) As String
-        Dim connectionString As String = "Data Source=cards.cdb"
-        Dim dt2 As DataTable = Nothing
-        Dim ds As New DataSet
-        Dim cRow As DataRow = Nothing
-        Dim mSQL2 = "SELECT * from texts WHERE id = '" & id & "';"
+        Dim text As String = ""
+        If special Then
+            text += "local c" + specialNumber.ToString + " ="
+            text += "Debug.AddCard(" + id.ToString + "," + ownerCode.ToString + "," + originalOwnerCode.ToString + "," + location.ToString + "," + zone.ToString + "," + pos.ToString + ")"
+            text += vbCrLf + "c" + specialNumber.ToString + ":CompleteProcedure()"
+        Else
+            text += "Debug.AddCard(" + id.ToString + "," + ownerCode.ToString + "," + originalOwnerCode.ToString + "," + location.ToString + "," + zone.ToString + "," + pos.ToString + ")"
+        End If
 
-        Dim name As String = ""
-        Try
-            Using con As New SQLiteConnection(connectionString)
-                Using cmd As New SQLiteCommand(mSQL2, con)
-                    con.Open()
-                    Using da As New SQLiteDataAdapter(cmd)
-                        da.Fill(ds)
-                        dt2 = ds.Tables(0)
-
-                    End Using
-                End Using
-            End Using
-            If dt2.Rows IsNot Nothing Then
-                name = Form1.getValue(dt2.Rows(0)("name"))
-            End If
-
-        Catch ex As Exception
-
-        End Try
-        Return name
+        Return text
     End Function
 End Class
